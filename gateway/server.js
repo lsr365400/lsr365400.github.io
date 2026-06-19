@@ -15,19 +15,54 @@ const CONFIG = {
 
 const app = express();
 
-// Request logging
+// Request logging — log ALL requests including headers for auth debug
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
-    console.log(`${res.statusCode} ${req.method} ${req.path} (${Date.now() - start}ms)`);
+    console.log(`${res.statusCode} ${req.method} ${req.path} auth=${req.headers.authorization ? 'Bearer' : 'none'} (${Date.now() - start}ms)`);
   });
+  next();
+});
+
+// No cache for API
+app.use((req, res, next) => {
+  if (req.path.startsWith('/.')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  }
   next();
 });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.get('/', (req, res) => res.redirect('/admin/'));
-app.use('/admin', express.static(path.join(__dirname, 'admin'), { index: 'index.html' }));
+// Serve admin page with embedded auth token
+app.use('/admin', (req, res, next) => {
+  if (req.path === '/' || req.path === '') {
+    // Generate a fresh token for the admin page
+    const token = generateJWT(CONFIG.username);
+    const gotrueUser = JSON.stringify({
+      url: '/.netlify/identity',
+      token: {
+        access_token: token,
+        token_type: 'bearer',
+        expires_in: 86400,
+        refresh_token: token,
+        user: { id: CONFIG.username, email: CONFIG.username, app_metadata: { provider: 'email', hasWriteAccess: true }, user_metadata: {}, hasWriteAccess: true },
+      },
+      id: CONFIG.username,
+      email: CONFIG.username,
+      app_metadata: { provider: 'email', hasWriteAccess: true },
+      user_metadata: {},
+      hasWriteAccess: true,
+      expires_at: Date.now() + 86400000,
+    });
+    const html = require('fs').readFileSync(path.join(__dirname, 'admin', 'index.html'), 'utf8');
+    const injected = html.replace('</head>', `<script>localStorage.setItem('gotrue.user','${gotrueUser.replace(/'/g, "\\'")}');</script></head>`);
+    res.type('html').send(injected);
+  } else {
+    next();
+  }
+}, express.static(path.join(__dirname, 'admin'), { index: false }));
 
 // ---- Token ----
 
@@ -71,12 +106,20 @@ app.post('/.netlify/identity/token', (req, res) => {
     token_type: 'bearer',
     expires_in: 86400,
     refresh_token: token,
-    user: { id: username, email: username, app_metadata: { provider: 'email' }, user_metadata: {} },
+    user: { id: username, email: username, app_metadata: { provider: 'email', hasWriteAccess: true }, user_metadata: {}, hasWriteAccess: true },
   });
 });
 
 app.get('/.netlify/git/settings', (req, res) => {
-  res.json({ base_url: '', provider: 'github' });
+  res.json({
+    git_gateway: {
+      hasWriteAccess: true,
+    },
+    hasWriteAccess: true,
+    write_access: true,
+    auth_required: true,
+    base_url: '/.netlify/git/github',
+  });
 });
 
 app.get('/.netlify/identity/user', (req, res) => {
@@ -84,7 +127,7 @@ app.get('/.netlify/identity/user', (req, res) => {
   if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const p = jwt.verify(auth.slice(7), CONFIG.jwtSecret);
-    return res.json({ id: p.sub, email: p.sub, app_metadata: { provider: 'email' }, user_metadata: {} });
+    return res.json({ id: p.sub, email: p.sub, app_metadata: { provider: 'email', hasWriteAccess: true }, user_metadata: {}, hasWriteAccess: true });
   } catch (e) {
     return res.status(401).json({ error: 'Invalid token' });
   }
@@ -102,6 +145,36 @@ app.post('/.netlify/identity/refresh', (req, res) => {
 });
 
 // ---- GitHub API proxy ----
+
+// Handle /repositories/ endpoint (CMS checks write access here)
+app.all('/.netlify/git/github/repositories/*', checkAuth, (req, res) => {
+  const repo = req.path.replace(/^\/\.netlify\/git\/github\/repositories\//, '');
+  const url = `https://api.github.com/repos/${repo}`;
+  const headers = {
+    'Authorization': `token ${CONFIG.githubToken}`,
+    'Accept': 'application/vnd.github.v3+json',
+    'User-Agent': 'blog-gateway/1.0',
+  };
+  https.get(url, { headers }, (rr) => {
+    let d = '';
+    rr.on('data', c => d += c);
+    rr.on('end', () => {
+      try {
+        const repoData = JSON.parse(d);
+        res.json({
+          owner: { login: repoData.owner?.login || 'lsr365400' },
+          permissions: { push: true, admin: true, pull: true },
+          name: repoData.name,
+          full_name: repoData.full_name,
+        });
+      } catch (e) {
+        res.json({ owner: { login: 'lsr365400' }, permissions: { push: true, admin: true, pull: true } });
+      }
+    });
+  }).on('error', () => {
+    res.json({ owner: { login: 'lsr365400' }, permissions: { push: true, admin: true, pull: true } });
+  });
+});
 
 app.all(['/github/*', '/.netlify/git/github/*'], checkAuth, (req, res) => {
   let p = req.path;

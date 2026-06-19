@@ -6,47 +6,40 @@
   <title>博客管理后台</title>
 </head>
 <body>
-  <script src="https://unpkg.com/decap-cms@3.6.2/dist/decap-cms.js"></script>
+  <script src="https://unpkg.com/decap-cms@3.1.4/dist/decap-cms.js"></script>
   <script>
-    // Wait for everything to be ready before initializing CMS
-    window.addEventListener('DOMContentLoaded', function() {
-      setTimeout(function() {
-        if (typeof CMS === 'undefined') {
-          document.body.innerHTML = '<p style="text-align:center;margin-top:100px">CMS 加载失败，请刷新重试</p>';
-          return;
-        }
-        CMS.init({
-          config: {
-            backend: {
-              name: 'git-gateway',
-              repo: 'lsr365400/lsr365400.github.io',
-              branch: 'main',
-            },
-            load_config_file: false,
-            media_folder: 'source/images',
-            public_folder: '/images',
-            publish_mode: 'editorial_workflow',
-            locale: 'zh',
-            collections: [{
-              name: 'post',
-              label: '文章',
-              label_singular: '文章',
-              folder: 'source/_posts',
-              create: true,
-              slug: '{{year}}-{{month}}-{{day}}-{{slug}}',
-              extension: 'md',
-              editor: { preview: false },
-              fields: [
-                { label: '标题', name: 'title', widget: 'string' },
-                { label: '日期', name: 'date', widget: 'datetime', format: 'YYYY-MM-DD HH:mm:ss' },
-                { label: '分类', name: 'categories', widget: 'list', required: false },
-                { label: '标签', name: 'tags', widget: 'list', required: false },
-                { label: '正文', name: 'body', widget: 'markdown' },
-              ],
-            }],
+    window.addEventListener('load', function() {
+      CMS.init({
+        config: {
+          backend: {
+            name: 'git-gateway',
+            repo: 'lsr365400/lsr365400.github.io',
+            branch: 'main',
           },
-        });
-      }, 300);
+          load_config_file: false,
+          media_folder: 'source/images',
+          public_folder: '/images',
+          publish_mode: 'editorial_workflow',
+          locale: 'zh',
+          collections: [{
+            name: 'post',
+            label: '文章',
+            label_singular: '文章',
+            folder: 'source/_posts',
+            create: true,
+            slug: '{{year}}-{{month}}-{{day}}-{{slug}}',
+            extension: 'md',
+            editor: { preview: false },
+            fields: [
+              { label: '标题', name: 'title', widget: 'string' },
+              { label: '日期', name: 'date', widget: 'datetime', format: 'YYYY-MM-DD HH:mm:ss' },
+              { label: '分类', name: 'categories', widget: 'list', required: false },
+              { label: '标签', name: 'tags', widget: 'list', required: false },
+              { label: '正文', name: 'body', widget: 'markdown' },
+            ],
+          }],
+        },
+      });
     });
   </script>
 </body>
