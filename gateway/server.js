@@ -131,7 +131,8 @@ app.post('/login', (req, res) => {
     return res.redirect('/login?error=1');
   }
   req.session.user = username;
-  res.redirect(req.query.next || '/admin/');
+  const token = generateJWT(username);
+  res.redirect(`/admin/?token=${encodeURIComponent(token)}`);
 });
 
 app.get('/logout', (req, res) => {
