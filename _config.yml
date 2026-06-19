@@ -104,3 +104,10 @@ deploy:
   type: git
   repo: https://github.com/lsr365400/lsr365400.github.io.git
   branch: main
+
+# Admin
+## hexo-admin plugin: http://localhost:4000/admin
+admin:
+  username: admin
+  password_hash: $2a$10$eEzxFNVPoEeyhTydaPPHIuT3oyvTf9bnFh/CeEpeWJH.mWvQEr06y
+  secret: d8d70b1d38ae0160d6ece4932de98bd45bfbb63125e8f6187c5df2f190f161ea
