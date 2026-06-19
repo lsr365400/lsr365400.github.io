@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
@@ -16,7 +17,6 @@ const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'admin')));
 app.use(session({
   secret: CONFIG.sessionSecret,
   resave: false,
@@ -59,16 +59,16 @@ button:hover{background:#d63850}
 </head>
 <body>
 <form method="post" action="/login">
-  <h1>Blog Admin</h1>
+  <h1>博客管理</h1>
   {{error}}
-  <label>Username</label>
+  <label>用户名</label>
   <input name="username" type="text" required autofocus>
-  <label>Password</label>
+  <label>密码</label>
   <input name="password" type="password" required>
-  <button type="submit">Login</button>
+  <button type="submit">登录</button>
 </form>
 </body>
-</html>`.replace('{{error}}', req.query.error ? '<p class="error">Invalid credentials</p>' : ''));
+</html>`.replace('{{error}}', req.query.error ? '<p class="error">用户名或密码错误</p>' : ''));
 });
 
 app.post('/login', (req, res) => {
@@ -88,7 +88,7 @@ app.get('/logout', (req, res) => {
 
 // ---- admin page (protected) ----
 
-app.get('/admin*', requireAuth);
+app.use('/admin', requireAuth, express.static(path.join(__dirname, 'admin')));
 
 // ---- GitHub API proxy (protected) ----
 // Handles both /github/... and /.netlify/git/github/... prefixes
