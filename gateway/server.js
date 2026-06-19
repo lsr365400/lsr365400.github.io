@@ -15,8 +15,18 @@ const CONFIG = {
 
 const app = express();
 
+// Request logging
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    console.log(`${res.statusCode} ${req.method} ${req.path} (${Date.now() - start}ms)`);
+  });
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.get('/', (req, res) => res.redirect('/admin/'));
 app.use('/admin', express.static(path.join(__dirname, 'admin'), { index: 'index.html' }));
 
 // ---- Token ----
@@ -63,6 +73,21 @@ app.post('/.netlify/identity/token', (req, res) => {
     refresh_token: token,
     user: { id: username, email: username, app_metadata: { provider: 'email' }, user_metadata: {} },
   });
+});
+
+app.get('/.netlify/git/settings', (req, res) => {
+  res.json({ base_url: '', provider: 'github' });
+});
+
+app.get('/.netlify/identity/user', (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const p = jwt.verify(auth.slice(7), CONFIG.jwtSecret);
+    return res.json({ id: p.sub, email: p.sub, app_metadata: { provider: 'email' }, user_metadata: {} });
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
 });
 
 app.post('/.netlify/identity/refresh', (req, res) => {
