@@ -30,7 +30,13 @@ app.use(session({
 
 function generateJWT(username) {
   return jwt.sign(
-    { sub: username, email: username, exp: Math.floor(Date.now() / 1000) + 86400 },
+    {
+      sub: username,
+      email: username,
+      exp: Math.floor(Date.now() / 1000) + 86400,
+      app_metadata: { provider: 'email' },
+      user_metadata: {},
+    },
     CONFIG.sessionSecret,
   );
 }
@@ -68,7 +74,7 @@ app.post('/.netlify/identity/token', (req, res) => {
     token_type: 'bearer',
     expires_in: 86400,
     refresh_token: token,
-    user: { email: username },
+    user: { id: username, email: username, app_metadata: { provider: 'email' }, user_metadata: {} },
   });
 });
 
