@@ -1,0 +1,131 @@
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const https = require('https');
+const path = require('path');
+
+const CONFIG = {
+  port: process.env.PORT || 3000,
+  username: process.env.ADMIN_USER || 'admin',
+  passwordHash: process.env.ADMIN_PASS_HASH || '',
+  githubToken: process.env.GITHUB_TOKEN || '',
+  sessionSecret: process.env.SESSION_SECRET || 'change-me-to-a-random-string',
+};
+
+const app = express();
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'admin')));
+app.use(session({
+  secret: CONFIG.sessionSecret,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 24 * 60 * 60 * 1000,
+  },
+}));
+
+// ---- login guard ----
+
+function requireAuth(req, res, next) {
+  if (req.session && req.session.user) return next();
+  if (req.accepts('html')) return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+  res.status(401).json({ error: 'Unauthorized' });
+}
+
+// ---- login page ----
+
+app.get('/login', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blog Admin Login</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1a1a2e;font-family:-apple-system,system-ui,sans-serif}
+form{background:#16213e;padding:40px;border-radius:12px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+h1{color:#e94560;text-align:center;margin-bottom:32px;font-size:24px}
+label{color:#a0a0b0;font-size:13px;display:block;margin-bottom:6px}
+input{width:100%;padding:12px;border:1px solid #2a2a4a;border-radius:8px;background:#0f3460;color:#fff;font-size:15px;margin-bottom:20px;outline:none}
+input:focus{border-color:#e94560}
+button{width:100%;padding:12px;background:#e94560;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer;font-weight:600}
+button:hover{background:#d63850}
+.error{color:#e94560;text-align:center;margin-bottom:16px;font-size:14px}
+</style>
+</head>
+<body>
+<form method="post" action="/login">
+  <h1>Blog Admin</h1>
+  {{error}}
+  <label>Username</label>
+  <input name="username" type="text" required autofocus>
+  <label>Password</label>
+  <input name="password" type="password" required>
+  <button type="submit">Login</button>
+</form>
+</body>
+</html>`.replace('{{error}}', req.query.error ? '<p class="error">Invalid credentials</p>' : ''));
+});
+
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.redirect('/login?error=1');
+  if (username !== CONFIG.username || !bcrypt.compareSync(password, CONFIG.passwordHash)) {
+    return res.redirect('/login?error=1');
+  }
+  req.session.user = username;
+  const next = req.query.next || '/admin/';
+  res.redirect(next);
+});
+
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => res.redirect('/login'));
+});
+
+// ---- admin page (protected) ----
+
+app.get('/admin*', requireAuth);
+
+// ---- GitHub API proxy (protected) ----
+// Handles both /github/... and /.netlify/git/github/... prefixes
+
+app.all(['/github/*', '/.netlify/git/github/*'], requireAuth, (req, res) => {
+  let ghPath = req.path;
+  ghPath = ghPath.replace(/^\/\.netlify\/git\/github/, '');
+  ghPath = ghPath.replace(/^\/github/, '');
+  const ghUrl = `https://api.github.com${ghPath}`;
+
+  const headers = {
+    'Authorization': `token ${CONFIG.githubToken}`,
+    'Accept': 'application/vnd.github.v3+json',
+    'User-Agent': 'blog-gateway/1.0',
+  };
+  if (req.headers['content-type']) headers['Content-Type'] = req.headers['content-type'];
+
+  const body = ['GET','HEAD'].includes(req.method) ? null :
+    (req.body && Object.keys(req.body).length ? JSON.stringify(req.body) : null);
+  if (body) headers['Content-Length'] = Buffer.byteLength(body);
+
+  const proxyReq = https.request(ghUrl, { method: req.method, headers }, (proxyRes) => {
+    let data = '';
+    proxyRes.on('data', chunk => data += chunk);
+    proxyRes.on('end', () => {
+      res.status(proxyRes.statusCode);
+      const ct = proxyRes.headers['content-type'] || '';
+      if (ct) res.set('Content-Type', ct);
+      res.send(data);
+    });
+  });
+
+  proxyReq.on('error', err => res.status(502).json({ error: err.message }));
+  if (body) proxyReq.write(body);
+  proxyReq.end();
+});
+
+app.listen(CONFIG.port, () => {
+  console.log(`Blog gateway running on :${CONFIG.port}`);
+});

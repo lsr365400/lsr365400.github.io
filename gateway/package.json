@@ -1,0 +1,14 @@
+{
+  "name": "blog-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "express-session": "^1.18.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5"
+  }
+}
