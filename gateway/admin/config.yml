@@ -1,0 +1,27 @@
+backend:
+  name: git-gateway
+  repo: lsr365400/lsr365400.github.io
+  branch: main
+
+load_config_file: false
+media_folder: source/images
+public_folder: /images
+publish_mode: editorial_workflow
+locale: zh
+
+collections:
+  - name: post
+    label: 文章
+    label_singular: 文章
+    folder: source/_posts
+    create: true
+    slug: "{{year}}-{{month}}-{{day}}-{{slug}}"
+    extension: md
+    editor:
+      preview: false
+    fields:
+      - { label: 标题, name: title, widget: string }
+      - { label: 日期, name: date, widget: datetime, format: YYYY-MM-DD HH:mm:ss }
+      - { label: 分类, name: categories, widget: list, required: false }
+      - { label: 标签, name: tags, widget: list, required: false }
+      - { label: 正文, name: body, widget: markdown }

@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const https = require('https');
 const path = require('path');
 
@@ -10,7 +12,7 @@ const CONFIG = {
   username: process.env.ADMIN_USER || 'admin',
   passwordHash: process.env.ADMIN_PASS_HASH || '',
   githubToken: process.env.GITHUB_TOKEN || '',
-  sessionSecret: process.env.SESSION_SECRET || 'change-me-to-a-random-string',
+  sessionSecret: process.env.SESSION_SECRET || 'change-me',
 };
 
 const app = express();
@@ -21,20 +23,65 @@ app.use(session({
   secret: CONFIG.sessionSecret,
   resave: false,
   saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000,
-  },
+  cookie: { httpOnly: true, sameSite: 'lax', maxAge: 24 * 60 * 60 * 1000 },
 }));
 
-// ---- login guard ----
+// ---- Token auth (JWT for Decap CMS git-gateway) ----
 
-function requireAuth(req, res, next) {
+function generateJWT(username) {
+  return jwt.sign(
+    { sub: username, email: username, exp: Math.floor(Date.now() / 1000) + 86400 },
+    CONFIG.sessionSecret,
+  );
+}
+
+function checkAuth(req, res, next) {
+  // Session-based
   if (req.session && req.session.user) return next();
+  // Token-based (Bearer)
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) {
+    try {
+      const payload = jwt.verify(auth.slice(7), CONFIG.sessionSecret);
+      req.session = req.session || {};
+      req.session.user = payload.sub;
+      return next();
+    } catch (e) { /* invalid token */ }
+  }
   if (req.accepts('html')) return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
   res.status(401).json({ error: 'Unauthorized' });
 }
+
+// ---- Netlify Identity compatible token endpoint ----
+
+app.post('/.netlify/identity/token', (req, res) => {
+  const { username, password, grant_type } = req.body;
+  if (!grant_type || !username || !password) {
+    return res.status(400).json({ error: 'invalid_grant' });
+  }
+  if (username !== CONFIG.username || !bcrypt.compareSync(password, CONFIG.passwordHash)) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+  const token = generateJWT(username);
+  res.json({
+    access_token: token,
+    token_type: 'bearer',
+    expires_in: 86400,
+    refresh_token: token,
+    user: { email: username },
+  });
+});
+
+app.post('/.netlify/identity/refresh', (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  try {
+    const payload = jwt.verify(token, CONFIG.sessionSecret);
+    const newToken = generateJWT(payload.sub);
+    return res.json({ access_token: newToken, token_type: 'bearer', expires_in: 86400, refresh_token: newToken });
+  } catch (e) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+});
 
 // ---- login page ----
 
@@ -78,22 +125,20 @@ app.post('/login', (req, res) => {
     return res.redirect('/login?error=1');
   }
   req.session.user = username;
-  const next = req.query.next || '/admin/';
-  res.redirect(next);
+  res.redirect(req.query.next || '/admin/');
 });
 
 app.get('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/login'));
 });
 
-// ---- admin page (protected) ----
+// ---- admin page ----
 
-app.use('/admin', requireAuth, express.static(path.join(__dirname, 'admin')));
+app.use('/admin', checkAuth, express.static(path.join(__dirname, 'admin')));
 
-// ---- GitHub API proxy (protected) ----
-// Handles both /github/... and /.netlify/git/github/... prefixes
+// ---- GitHub API proxy ----
 
-app.all(['/github/*', '/.netlify/git/github/*'], requireAuth, (req, res) => {
+app.all(['/github/*', '/.netlify/git/github/*'], checkAuth, (req, res) => {
   let ghPath = req.path;
   ghPath = ghPath.replace(/^\/\.netlify\/git\/github/, '');
   ghPath = ghPath.replace(/^\/github/, '');

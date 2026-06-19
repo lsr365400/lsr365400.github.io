@@ -1,44 +1,60 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Blog Admin</title>
+  <title>博客管理后台</title>
 </head>
 <body>
   <script src="https://unpkg.com/decap-cms@^3.0.0/dist/decap-cms.js"></script>
   <script>
-    // Tell Decap CMS to use this server as the git-gateway
-    CMS.init({
-      config: {
-        backend: {
-          name: 'git-gateway',
-          repo: 'lsr365400/lsr365400.github.io',
-          branch: 'main',
-        },
-        load_config_file: false,
-        media_folder: 'source/images',
-        public_folder: '/images',
-        publish_mode: 'editorial_workflow',
-        collections: [{
-          name: 'post',
-          label: '文章',
-          label_singular: '文章',
-          folder: 'source/_posts',
-          create: true,
-          slug: '{{year}}-{{month}}-{{day}}-{{slug}}',
-          extension: 'md',
-          editor: { preview: false },
-          fields: [
-            { label: '标题', name: 'title', widget: 'string' },
-            { label: '日期', name: 'date', widget: 'datetime', format: 'YYYY-MM-DD HH:mm:ss' },
-            { label: '分类', name: 'categories', widget: 'list', required: false },
-            { label: '标签', name: 'tags', widget: 'list', required: false },
-            { label: '正文', name: 'body', widget: 'markdown' },
-          ],
-        }],
-      },
-    });
+    // Polyfill crypto.randomUUID for older browsers
+    if (!window.crypto || !window.crypto.randomUUID) {
+      window.crypto = window.crypto || {};
+      window.crypto.randomUUID = function() {
+        return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function(c) {
+          return (c ^ (Math.random() * 16 >> c / 4)).toString(16);
+        });
+      };
+    }
+  </script>
+  <script>
+    var init = setInterval(function() {
+      if (typeof CMS !== 'undefined') {
+        clearInterval(init);
+        CMS.init({
+          config: {
+            backend: {
+              name: 'git-gateway',
+              repo: 'lsr365400/lsr365400.github.io',
+              branch: 'main',
+            },
+            load_config_file: false,
+            media_folder: 'source/images',
+            public_folder: '/images',
+            publish_mode: 'editorial_workflow',
+            locale: 'zh',
+            collections: [{
+              name: 'post',
+              label: '文章',
+              label_singular: '文章',
+              folder: 'source/_posts',
+              create: true,
+              slug: '{{year}}-{{month}}-{{day}}-{{slug}}',
+              extension: 'md',
+              editor: { preview: false },
+              fields: [
+                { label: '标题', name: 'title', widget: 'string' },
+                { label: '日期', name: 'date', widget: 'datetime', format: 'YYYY-MM-DD HH:mm:ss' },
+                { label: '分类', name: 'categories', widget: 'list', required: false },
+                { label: '标签', name: 'tags', widget: 'list', required: false },
+                { label: '正文', name: 'body', widget: 'markdown' },
+              ],
+            }],
+          },
+        });
+      }
+    }, 50);
   </script>
 </body>
 </html>
